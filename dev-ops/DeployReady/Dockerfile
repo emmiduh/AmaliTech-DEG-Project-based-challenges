@@ -10,7 +10,7 @@ COPY app/package*.json ./
 
 # Install only production dependencies. 
 # We don't care about cleaning the cache here because this entire container will be thrown away.
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Copy the rest of the application code
 COPY app/ ./
