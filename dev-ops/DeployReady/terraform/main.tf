@@ -77,7 +77,6 @@ resource "aws_instance" "app_server" {
   }
 }
 
-/*
 # Create an IAM User for the CI/CD Pipeline
 resource "aws_iam_user" "github_actions_user" {
   name = "deployready-pipeline-user"
@@ -114,4 +113,3 @@ resource "aws_iam_user_policy" "pipeline_policy" {
     ]
   })
 }
-*/
