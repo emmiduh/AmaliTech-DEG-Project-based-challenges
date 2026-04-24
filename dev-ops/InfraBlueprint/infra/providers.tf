@@ -10,7 +10,7 @@ terraform {
   backend "s3" {
     bucket = "vela-assets-2026"
     key    = "vela-assets/terraform.tfstate"
-    region = "us-east-1"
+    region = "eu-west-1"
     encrypt = true
   }
 }
