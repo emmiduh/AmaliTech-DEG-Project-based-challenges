@@ -14,6 +14,7 @@ An EC2 instance was provisioned using the AWS Console with the following configu
 * **Security Group (`deployready-api-sg`):**
   * **Ingress Port 80 (HTTP):** Open to `0.0.0.0/0` for global http access.
   * **Ingress Port 22 (SSH):** Open to only my host ip
+  
 ![alt text](imgs\instance.png)
 
 ## 2. How to check if the container is running
@@ -36,6 +37,7 @@ The command to check if the container is running is `docker container ls`
 
 ## 4. How to view the application logs
 To view the application logs run: `docker logs kora-app`
+
 ![alt text](imgs\app_logs.png)
 
 Screenshot of the app ui
