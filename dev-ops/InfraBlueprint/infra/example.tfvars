@@ -13,6 +13,3 @@ db_password = "REPLACE_WITH_STRONG_PASSWORD_MEETING_RDS_POLICY"
 
 # Globally unique S3 bucket name (lower case, no underscores if you want strict DNS-style names).
 bucket_name = "vela-payments-app-data-UNIQUE_SUFFIX"
-
-# existing EC2 key pair name in the same region for SSH. Set to null if unused.
-ec2_key_pair_name = null
