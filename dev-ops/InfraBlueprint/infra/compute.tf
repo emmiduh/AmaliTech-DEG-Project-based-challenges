@@ -96,7 +96,7 @@ resource "aws_key_pair" "web_key" {
 
 resource "aws_instance" "web" {
   ami                         = data.aws_ami.amazon_linux_2023.id
-  instance_type               = "t2.micro"
+  instance_type               = "t3.micro"
   subnet_id                   = aws_subnet.public_1.id
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
   iam_instance_profile        = aws_iam_instance_profile.web_profile.name
