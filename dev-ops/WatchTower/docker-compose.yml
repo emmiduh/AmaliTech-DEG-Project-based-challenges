@@ -61,6 +61,7 @@ services:
       - "${PROMETHEUS_HOST_PORT}:${PROMETHEUS_INTERNAL_PORT}"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     networks: [observability]
     logging: *json-file-logging
     depends_on:
