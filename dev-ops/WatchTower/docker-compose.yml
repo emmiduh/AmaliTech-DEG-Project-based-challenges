@@ -1,4 +1,8 @@
-# WatchTower — unified observability stack (3 microservices + Prometheus + Grafana).
+# WatchTower — unified observability stack (3 microservices + Prometheus + Grafana + Blackbox).
+# Blackbox Exporter performs synthetic HTTP checks against /health so alerts can reflect true HTTP status
+# without changing application business logic.
+#
+# Usage: `cp .env.example .env` then `docker compose up --build`
 
 name: watchtower
 
@@ -53,6 +57,7 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
     ports:
       - "${PROMETHEUS_HOST_PORT}:${PROMETHEUS_INTERNAL_PORT}"
     volumes:
@@ -64,6 +69,7 @@ services:
       - order-service
       - tracking-service
       - notification-service
+      - blackbox-exporter
 
   grafana:
     image: grafana/grafana:10.4.5
@@ -102,3 +108,19 @@ services:
     logging: *json-file-logging
     depends_on:
       - loki
+  
+  blackbox-exporter:
+    image: quay.io/prometheus/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/config/blackbox.yml"
+    volumes:
+      - ./blackbox/blackbox.yml:/config/blackbox.yml:ro
+    ports:
+      - "${BLACKBOX_HOST_PORT:-9115}:9115"
+    networks: [observability]
+    logging: *json-file-logging
+    depends_on:
+      - order-service
+      - tracking-service
+      - notification-service

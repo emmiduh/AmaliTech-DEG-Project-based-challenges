@@ -25,7 +25,30 @@ scrape_configs:
     static_configs:
       - targets: ["notification-service:3003"]
 
-    # Prometheus self-metrics (optional but useful for ops dashboards).
+  # Synthetic checks against /health via Blackbox — enables alerts on true HTTP status without changing app code.
+  - job_name: "blackbox-health"
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://order-service:3001/health
+          - http://tracking-service:3002/health
+          - http://notification-service:3003/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+      # Friendly label for dashboards/alerts (order-service, tracking-service, ...)
+      - source_labels: [__param_target]
+        regex: "http://([^:]+):.*"
+        target_label: service
+        replacement: "$1"
+
+  # Prometheus self-metrics (optional but useful for ops dashboards).
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]

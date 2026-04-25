@@ -7,21 +7,22 @@ groups:
     rules:
       # ------------------------------------------------------------------
       # ServiceDown (critical)
+      # Blackbox probe_success == 0 means non-200 response, timeout, or connection failure on /health.
       # ------------------------------------------------------------------
       - alert: ServiceDown
-        expr: up{job=~"order-service|tracking-service|notification-service"} == 0
+        expr: probe_success{job="blackbox-health"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "WatchTower service is down ({{ $labels.job }})"
+          summary: "WatchTower service health check failing ({{ $labels.service }})"
           description: >-
-            Prometheus failed to scrape {{ $labels.job }} for more than 1 minute (up=0).
-            The service container may have crashed or is unresponsive.
+            Blackbox HTTP probe to /health for {{ $labels.service }} has been failing for more than one minute
+            (probe_success=0). Check container logs, dependency availability, and upstream load balancers.
 
       # ------------------------------------------------------------------
       # HighErrorRate (warning)
-      # Share of HTTP 5xx responses across all routes.
+      # Share of HTTP 5xx responses across all routes for each scraped application job.
       # ------------------------------------------------------------------
       - alert: HighErrorRate
         expr: |
@@ -36,19 +37,20 @@ groups:
         annotations:
           summary: "Elevated 5xx error rate on {{ $labels.job }}"
           description: >-
-            More than 5% of measured HTTP requests returned a 5xx status for {{ $labels.job }} over the last 5 minutes.
+            More than 5% of measured HTTP requests returned a 5xx status for job {{ $labels.job }} over the last 5 minutes.
             Inspect recent deploys, downstream dependencies, and saturation on the service.
 
       # ------------------------------------------------------------------
       # ServiceNotScraping (warning)
-      # Checks if the timestamp of the last successful scrape is older than 2 minutes.
+      # Prometheus `up` series missing or zero for application metrics jobs for >2 minutes.
       # ------------------------------------------------------------------
       - alert: ServiceNotScraping
-        expr: (time() - prometheus_target_last_scrape_timestamp_seconds{job=~"order-service|tracking-service|notification-service"}) > 120
+        expr: up{job=~"order-service|tracking-service|notification-service"} == 0
+        for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "Prometheus metrics stale for {{ $labels.job }}"
+          summary: "Prometheus cannot scrape metrics for {{ $labels.job }}"
           description: >-
-            No metrics have been scraped from {{ $labels.job }} for over 2 minutes.
-            Check if the /metrics endpoint is hanging or if the network is saturated.
+            The /metrics target for {{ $labels.job }} has been unreachable (up==0) for more than two minutes.
+            This is distinct from a failing /health probe: the metrics endpoint or network path may be broken.
