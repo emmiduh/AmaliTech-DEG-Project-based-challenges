@@ -12,37 +12,36 @@ Infrastructure-as-code for **Vela Payments**, a fintech-style two-tier layout: a
 
 ## 1. Architecture diagram
 
-```
-                         Internet
-                             |
-              +------------+------------+
-              |  HTTP/HTTPS (80/443)   |
-              |  SSH (22) from allowed_ssh_cidr   |
-              v                        |
-      +---------------+                |
-      |  web-sg       |                |
-      +-------+-------+                |
-              |                        |
-              v                        |
-      +---------------+   TCP 5432     |      +------------------+
-      | EC2 (t2.micro)|----------------+----->| db-sg            |
-      | Amazon Linux 3|  (only from    |      | (PostgreSQL)     |
-      +-------+-------+   web-sg)      |      +--------+---------+
-              |                        |               |
-              | IAM instance profile   |               v
-              | (S3 Get/Put on app     |      +------------------+
-              |  bucket only)          |      | RDS PostgreSQL 15|
-              v                        |      | db.t3.micro      |
-      +---------------+                |      | private subnets  |
-      | S3 bucket     |<---------------+      | not public       |
-      | versioning ON |  (API calls)          +------------------+
-      | public access |
-      | fully BLOCKED |
-      +---------------+
+```mermaid
+graph TD
+    Internet((Internet))
 
-VPC 10.0.0.0/16 (configurable)
-├── 2x public subnets  (AZ-a, AZ-b) + Internet Gateway + public route table
-└── 2x private subnets (AZ-a, AZ-b)  — RDS subnet group only (no NAT in this baseline)
+    subgraph VPC ["VPC (10.0.0.0/16)"]
+        
+        subgraph Public ["Public Subnets (AZ-a, AZ-b)"]
+            EC2["EC2 Instance (t2.micro)<br/>Amazon Linux 3<br/>SG: web-sg"]
+        end
+
+        subgraph Private ["Private Subnets (AZ-a, AZ-b)"]
+            RDS[("RDS PostgreSQL 15<br/>(db.t3.micro)<br/>SG: db-sg")]
+        end
+        
+    end
+
+    S3[("S3 Bucket<br/>Versioning: ON<br/>Public Access: BLOCKED")]
+
+    %% Traffic and Permissions
+    Internet -- "HTTP/HTTPS (80/443)<br/>SSH (22) from allowed_ssh_cidr" --> EC2
+    EC2 -- "TCP 5432<br/>(Allowed ONLY from web-sg)" --> RDS
+    EC2 -- "API Calls<br/>(IAM Profile: S3 Get/Put)" --> S3
+
+    classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:black;
+    classDef vpc fill:#F3F3F3,stroke:#3F8624,stroke-width:2px,stroke-dasharray: 5 5,color:black;
+    classDef subnet fill:#E6F6F6,stroke:#00A4A6,stroke-width:1px,color:black;
+    
+    class VPC vpc;
+    class Public,Private subnet;
+    class EC2,RDS,S3 aws;
 ```
 
 **Traffic rules in plain language**
