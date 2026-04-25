@@ -1,0 +1,12 @@
+# Environments
+.env
+
+# Dependencies
+node_modules/
+
+# Observability Data
+prometheus_data/
+grafana_data/
+
+# OS Files
+.DS_Store
