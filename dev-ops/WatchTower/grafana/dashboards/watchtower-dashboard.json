@@ -18,9 +18,45 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 1,
   "links": [],
   "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": false,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "{service=~\"order-service|tracking-service|notification-service\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Aggregated Logs",
+      "type": "logs"
+    },
     {
       "datasource": {
         "type": "prometheus",
@@ -81,7 +117,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 8
       },
       "id": 1,
       "options": {
@@ -185,7 +221,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 17
       },
       "id": 2,
       "options": {
@@ -285,7 +321,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 26
       },
       "id": 3,
       "options": {
@@ -319,7 +355,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "15s",
+  "refresh": "5s",
   "schemaVersion": 39,
   "tags": [
     "watchtower",
@@ -329,13 +365,13 @@
     "list": []
   },
   "time": {
-    "from": "now-5m",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "WatchTower Observability",
   "uid": "watchtower-main",
-  "version": 4,
+  "version": 1,
   "weekStart": ""
 }
