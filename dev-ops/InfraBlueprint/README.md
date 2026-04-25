@@ -1,197 +1,157 @@
-# InfraBlueprint
+# InfraBlueprint — Vela Payments (Terraform on AWS)
 
-This challenge is designed to test your ability to define, provision, and manage cloud infrastructure as code — a foundational DevOps skill.
+Infrastructure-as-code for **Vela Payments**, a fintech-style two-tier layout: a **public web EC2** instance, a **private RDS PostgreSQL** database, and a **private S3 bucket** for object storage. Everything runs inside a **custom VPC** with explicit security groups and least-privilege IAM.
 
----
-
-## 1. Business Context
-
-**Client:** Vela Payments
-**Industry:** Fintech — Payment processing for small businesses
-
-### The Problem
-
-Vela's infrastructure was built by clicking through the AWS Console over two years. No one documented what was created or why. Last month, their lead engineer left the company. Nobody knows what is running, what it costs, or how to rebuild it if something goes wrong.
-
-The CTO has one goal: **if the entire AWS account was deleted tomorrow, a new engineer should be able to rebuild the infrastructure by running a single command**.
-
-### Your Role
-
-You are joining as their infrastructure engineer. You will not be running application code. Your job is to write **Terraform configuration** that provisions Vela's infrastructure from scratch — reproducibly, securely, and cleanly.
+> 🚀 **BONUS INCLUDED:** This `main` branch contains the foundational "Flat" architecture to ensure smooth automated grading. To demonstrate enterprise scalability and DRY principles, I have also completed the Bonus assignment by refactoring this architecture into reusable modules. 
+> 
+> **👉 [Click here to view the Pull Request containing the Module Refactor](https://github.com/emmiduh/AmaliTech-DEG-Project-based-challenges/pull/2)**
 
 ---
 
-## 2. What You Are Building
+---
 
-You will provision the infrastructure for a simple two-tier web application: a public-facing server and a managed database.
-
-The diagram below shows the target architecture:
+## 1. Architecture diagram
 
 ```
-Internet
-    │
-    ▼
-[Security Group: web]
-    │
-    ▼
-[EC2 Instance — t2.micro]  ──────►  [Security Group: db]
-    │                                       │
-    │                                       ▼
-    │                               [RDS — db.t3.micro]
-    │
-    ▼
-[S3 Bucket — static assets]
+                         Internet
+                             |
+              +------------+------------+
+              |  HTTP/HTTPS (80/443)   |
+              |  SSH (22) from allowed_ssh_cidr   |
+              v                        |
+      +---------------+                |
+      |  web-sg       |                |
+      +-------+-------+                |
+              |                        |
+              v                        |
+      +---------------+   TCP 5432     |      +------------------+
+      | EC2 (t2.micro)|----------------+----->| db-sg            |
+      | Amazon Linux 3|  (only from    |      | (PostgreSQL)     |
+      +-------+-------+   web-sg)      |      +--------+---------+
+              |                        |               |
+              | IAM instance profile   |               v
+              | (S3 Get/Put on app     |      +------------------+
+              |  bucket only)          |      | RDS PostgreSQL 15|
+              v                        |      | db.t3.micro      |
+      +---------------+                |      | private subnets  |
+      | S3 bucket     |<---------------+      | not public       |
+      | versioning ON |  (API calls)          +------------------+
+      | public access |
+      | fully BLOCKED |
+      +---------------+
+
+VPC 10.0.0.0/16 (configurable)
+├── 2x public subnets  (AZ-a, AZ-b) + Internet Gateway + public route table
+└── 2x private subnets (AZ-a, AZ-b)  — RDS subnet group only (no NAT in this baseline)
 ```
 
-All resources must live inside a **custom VPC** — not the default AWS VPC.
+**Traffic rules in plain language**
+
+- **Web (`web-sg`):** world → 80/443; **only your IP (`allowed_ssh_cidr`)** → 22; outbound anywhere (patches, S3, etc.).
+- **Database (`db-sg`):** **only** the web instance’s security group may open connections to **5432**. Nothing from the public internet hits PostgreSQL directly.
+- **S3:** bucket policy is **not** used for public reads; the bucket is private. The EC2 role is the intended application access path via `s3:GetObject` / `s3:PutObject` on **that bucket’s objects only**.
 
 ---
 
-## 3. Getting Started
+## 2. Setup instructions
 
-1. **Fork** this repository.
-2. Install [Terraform](https://developer.hashicorp.com/terraform/install) (≥ 1.5).
-3. Configure your AWS credentials via environment variables or `~/.aws/credentials`. **Do not hardcode credentials anywhere.**
-4. All Terraform code goes in the `infra/` directory.
-
----
-
-## 4. The Assignment
-
-### Part 1 — Networking
-
-**Deliverable:** Terraform resources for the VPC and subnets.
-
-Requirements:
-
-- [ ] A **VPC** with a CIDR block of `10.0.0.0/16`.
-- [ ] Two **public subnets** in different Availability Zones (for the EC2 instance).
-- [ ] Two **private subnets** in different Availability Zones (for the RDS instance).
-- [ ] An **Internet Gateway** attached to the VPC.
-- [ ] A **Route Table** for the public subnets that routes `0.0.0.0/0` through the Internet Gateway.
-- [ ] All resources tagged with `Project = "vela-payments"`.
-
----
-
-### Part 2 — Compute
-
-**Deliverable:** Terraform resources for the EC2 instance and its security group.
-
-Requirements:
-
-- [ ] A **Security Group** (`web-sg`) that allows:
-  - Inbound HTTP on port 80 from `0.0.0.0/0`
-  - Inbound HTTPS on port 443 from `0.0.0.0/0`
-  - Inbound SSH on port 22 from **your IP only** (use a variable, not a hardcoded IP)
-  - All outbound traffic
-- [ ] An **EC2 instance** (`t2.micro`, Amazon Linux 2023) in one of the public subnets, attached to `web-sg`.
-- [ ] An **IAM Instance Profile** attached to the EC2 instance. The role must only allow `s3:GetObject` and `s3:PutObject` on the S3 bucket you create in Part 4 — nothing else.
-
----
-
-### Part 3 — Database
-
-**Deliverable:** Terraform resources for an RDS instance and its security group.
-
-Requirements:
-
-- [ ] A **Security Group** (`db-sg`) that allows inbound traffic on port 5432 (PostgreSQL) **only from `web-sg`** — not from the internet.
-- [ ] An **RDS instance** (`db.t3.micro`, PostgreSQL 15) in the private subnets.
-- [ ] The database username and password must be passed in as **Terraform variables**. They must never appear as default values in the code.
-- [ ] The RDS instance must **not** be publicly accessible.
-
-> **Cost note:** RDS `db.t3.micro` is included in the AWS free tier (750 hours/month for 12 months). Destroy it when you are done with `terraform destroy`.
-
----
-
-### Part 4 — Storage
-
-**Deliverable:** Terraform resources for an S3 bucket.
-
-Requirements:
-
-- [ ] An **S3 bucket** for static assets.
-- [ ] **Block all public access** on the bucket — it should only be reachable from the EC2 instance's IAM role.
-- [ ] **Versioning** enabled on the bucket.
-- [ ] The bucket name must come from a Terraform variable (bucket names are globally unique — hardcoding one will cause apply failures for other reviewers).
-
----
-
-### Part 5 — Variables, Outputs & State
-
-**Deliverable:** `variables.tf`, `outputs.tf`, and a `backend` configuration.
-
-Requirements:
-
-- [ ] Define all configurable values (region, CIDR blocks, your IP, DB credentials, bucket name) in `variables.tf` with descriptions. Provide an `example.tfvars` file with placeholder values.
-- [ ] Define the following **outputs** in `outputs.tf`:
-  - EC2 instance public IP
-  - RDS endpoint
-  - S3 bucket name
-- [ ] Configure a [Terraform S3 backend](https://developer.hashicorp.com/terraform/language/settings/backends/s3) to store state remotely. Document how to set up the backend bucket in your README (it must be created manually before `terraform init`).
-
----
-
-## 5. Verification
-
-A reviewer will test your submission by running:
-
+### 2.1 Prerequisites
+- [Terraform](https://developer.hashicorp.com/terraform/install) **≥ 1.5**
+- AWS CLI configured (aws configure) with appropriate IAM permissions.
+- Clone this infrastructure blueprint to your local machine and navigate to the Terraform directory:
 ```bash
-terraform init
-terraform plan -var-file="example.tfvars"
+git clone [https://github.com/emmiduh/AmaliTech-DEG-Project-based-challenges.git](https://github.com/emmiduh/AmaliTech-DEG-Project-based-challenges.git)
+cd AmaliTech-DEG-Project-based-challenges/dev-ops/InfraBlueprint/infra
 ```
 
-`terraform plan` must complete with no errors. They will not run `terraform apply`, so you do not need a live environment at submission time — but your code must be correct enough to plan cleanly.
+### 2.2 Generate Local SSH Key
+To adhere to the principle of full automation, this stack dynamically uploads a public key. Generate one locally before initializing:
+   ```bash
+   cd infra
+   ssh-keygen -t ed25519 -f ./vela-key -N ""
+   ```
+(Ensure vela-key and vela-key.pub remain in your .gitignore)
+
+### 2.3 Remote state bucket (S3 backend)
+This project utilizes a secure S3 Backend for state management to prevent local state corruption and allow for team collaboration. Because Terraform cannot provision the bucket it uses to store its own initial state, you must create it manually before initialization:
+
+1. Create a private S3 bucket in your target region (e.g., `vela-tfstate-yourname`).
+2. Enable Bucket Versioning and Block All Public Access.
+3. Open `providers.tf` and ensure the `backend "s3"` block contains your exact bucket name.
+
+Once the bucket is created and your code is updated, initialize the working directory:
+```bash
+cd infra
+terraform init
+```
+
+### 2.4 Plan and apply
+Copy the committed example file to create your local variables:
+   ```bash
+   cp example.tfvars terraform.tfvars
+   ```
+Edit terraform.tfvars with your real IP, secure passwords, and a unique bucket name, then run:
+   ```bash
+   terraform plan -var-file="terraform.tfvars"
+   ```
 
 ---
 
-## 6. Bonus (Optional)
+## 3. Variable reference
 
-Pick **one** if you want to go further:
-
-- **Modules:** Refactor your code to use reusable modules (e.g., a `networking` module and a `compute` module).
-- **Multi-environment:** Use Terraform workspaces or separate `.tfvars` files to support a `staging` and `production` environment from the same codebase.
-- **RDS snapshot:** Add a Terraform resource that takes an automated RDS snapshot before any `terraform destroy` is run.
-
-Describe what you added and why in your README.
-
----
-
-## 7. Documentation Requirements
-
-Your final `README.md` must replace these instructions and cover:
-
-1. **Architecture diagram** — a visual showing the VPC, subnets, EC2, RDS, and S3 with their security relationships.
-2. **Setup instructions** — how to configure credentials, create the backend bucket, and run `terraform init && terraform plan`.
-3. **Variable reference** — a table listing every variable, its type, and what it controls.
-4. **Design decisions** — at least two choices you made and why (e.g., why private subnets for RDS, why IAM instead of access keys).
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| `aws_region` | `string` | AWS region for the provider and regional resources (for example `eu-west-1`). |
+| `vpc_cidr` | `string` | IPv4 CIDR block for the custom VPC. |
+| `allowed_ssh_cidr` | `string` | Your public IPv4 in CIDR form for SSH (for example `203.0.113.4/32`). |
+| `db_username` | `string` (sensitive) | RDS master username — **no default** (must be supplied). |
+| `db_password` | `string` (sensitive) | RDS master password — **no default** (must be supplied). |
+| `bucket_name` | `string` | Globally unique S3 bucket name for the application assets. |
 
 ---
 
-## 8. Submission Instructions
+## 4. Design decisions
 
-1. **Fork** this repository.
-2. Complete all five parts in your fork.
-3. Replace this README with your own documentation as outlined above.
-4. Submit your repo link via the [online form](https://forms.cloud.microsoft/e/f3FF83LVz3).
+| Topic | Decision | Why |
+| ----- | -------- | --- |
+| Dynamic SSH Keys | `aws_key_pair` using `file()` | Prevents locking out future engineers by relying on pre-existing console key pairs. Allows 100% automated infrastructure rebuilds. |
+| DB security group | `5432` allowed only from `web-sg` | Stronger than CIDR rules tied to a changing instance IP; SG-to-SG references tightly couple the web tier to the DB automatically. |
+| IAM on EC2 | Instance profile with scoped inline policy | No static keys on disk. Blast radius is strictly limited to one bucket prefix API surface. |
+| S3 public access | `aws_s3_bucket_public_access_block`  | Defense in depth ensures objects remain private even if a future bucket policy is misconfigured. |
+| S3 versioning | Enabled | Supports recovery from accidental overwrites — important for fintech auditability. |
+| SSH exposure | Port **22** restricted to **`allowed_ssh_cidr`** variable | Remote administration without opening management SSH to the entire internet. |
+| RDS snapshots | `skip_final_snapshot = true` | Keeps `terraform destroy` friction low for coursework. |
 
 ---
 
-## ⚠️ Pre-Submission Checklist
+## 5. File layout (`infra/`)
 
-### Code
+| File | Role |
+| ---- | ---- |
+| `providers.tf` | AWS provider config, default tags, and hardcoded S3 backend. |
+| `variables.tf` | All inputs with strict type definitions. |
+| `outputs.tf` | Exports EC2 public IP, RDS endpoint, and S3 bucket name. |
+| `network.tf` | VPC, public/private subnets, IGW, and routing. |
+| `compute.tf` | Web security group, IAM role/profile, Key Pair, and EC2 instance. |
+| `database.tf` | DB security group, subnet group, and RDS PostgreSQL instance. |
+| `storage.tf` | Private versioned S3 bucket and public access blocks. |
+| `example.tfvars` | Safe placeholder variables (committed to git). |
 
-- [ ] `terraform init && terraform plan -var-file="example.tfvars"` completes with no errors.
-- [ ] No AWS credentials, passwords, or real IP addresses are committed to the repository.
-- [ ] `example.tfvars` is committed; any real `.tfvars` files with actual values are in `.gitignore`.
-- [ ] RDS is in **private** subnets and `publicly_accessible = false`.
-- [ ] SSH access is locked to a variable (not `0.0.0.0/0`).
+---
 
-### Documentation
+## 6. Bonus — Modular Architecture
+Rather than executing the multi-environment bonus, I elected to refactor the architecture into isolated modules (networking, compute, database, storage).
 
-- [ ] Architecture diagram is included.
-- [ ] Variable reference table is present.
-- [ ] Backend setup instructions are clear enough for a reviewer to follow.
-- [ ] This README has been replaced with your own documentation.
-- [ ] Commit history shows progress over time (not a single upload commit).
-- [ ] GitHub repository is set to **Public**.
+This approach demonstrates advanced Terraform state management, output dependency injection (e.g., passing the S3 ARN from the storage module into the compute module's IAM policy), and DRY principles for enterprise scalability. You can view this implementation in the linked Pull Request at the top of this document.
+
+---
+
+## 7. Outputs
+
+After `terraform apply`, read:
+
+- `ec2_public_ip` — public IPv4 of the web instance  
+- `rds_endpoint` — hostname:port for PostgreSQL (reachable only from inside the VPC / web SG path)  
+- `s3_bucket_name` — application bucket name  
+
+---

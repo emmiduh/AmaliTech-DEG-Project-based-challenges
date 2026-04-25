@@ -4,6 +4,12 @@ This folder contains **Kora Analytics**’ small Node.js API under [`app/`](./ap
 
 ---
 
+Clone this infrastructure blueprint to your local machine and navigate to the DeployReady directory:
+```bash
+git clone [https://github.com/emmiduh/AmaliTech-DEG-Project-based-challenges.git](https://github.com/emmiduh/AmaliTech-DEG-Project-based-challenges.git)
+cd AmaliTech-DEG-Project-based-challenges/dev-ops/DeployReady
+```
+
 ## Architecture overview
 
 ```mermaid
