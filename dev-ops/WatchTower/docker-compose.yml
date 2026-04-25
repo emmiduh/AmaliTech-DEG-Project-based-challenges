@@ -51,4 +51,21 @@ services:
     networks: [observability]
     logging: *json-file-logging
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    ports:
+      - "${PROMETHEUS_HOST_PORT}:${PROMETHEUS_INTERNAL_PORT}"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks: [observability]
+    logging: *json-file-logging
+    depends_on:
+      - order-service
+      - tracking-service
+      - notification-service
+
   

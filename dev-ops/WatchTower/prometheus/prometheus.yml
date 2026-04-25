@@ -1,0 +1,30 @@
+# Prometheus configuration for WatchTower — scrapes application /metrics and Blackbox /health probes.
+# Targets use Docker Compose DNS names on the shared `observability` network (not localhost).
+
+global:
+  scrape_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # Application metrics (prom-client) — each job name matches the Compose service name for clean dashboards.
+  - job_name: "order-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["order-service:3001"]
+
+  - job_name: "tracking-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["tracking-service:3002"]
+
+  - job_name: "notification-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["notification-service:3003"]
+
+    # Prometheus self-metrics (optional but useful for ops dashboards).
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
