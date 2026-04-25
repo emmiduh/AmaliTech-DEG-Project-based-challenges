@@ -113,13 +113,8 @@ docker compose up --build
 ### 3.3 Verify Prometheus
 
 1. Open **http://localhost:9090** (or `${PROMETHEUS_HOST_PORT}` if you changed it).
-2. Navigate to **Status → Targets**.
-3. You should see **`order-service`**, **`tracking-service`**, **`notification-service`**, **`blackbox-health`**, and **`prometheus`** in **UP** state (green) after ~30–60 seconds.
-
-**Quick PromQL checks**
-
-- Request traffic: `sum by (job) (rate(http_requests_total[1m]))`
-- Health probes: `probe_success{job="blackbox-health"}`
+2. Navigate to **Status → Targets**. You should see **`order-service`**, **`tracking-service`**, **`notification-service`**, **`blackbox-health`**, and **`prometheus`** in **UP** state (green) after ~30–60 seconds.
+3. Click on **Alerts** to see the alerts status.
 
 ### 3.4 Verify Grafana
 
@@ -135,11 +130,12 @@ docker compose up --build
 | ----- | --------------- | ----------- |
 | **HTTP request rate (per service)** | Throughput across all instrumented routes, split by Compose/`job` name. | `sum by (job) (rate(http_requests_total[$__rate_interval]))` |
 | **HTTP 5xx error rate (%)** | Percentage of responses whose `status` label matches `5xx` for each `job`. Uses `clamp_min` to avoid divide-by-zero when a service is idle. | `100 * sum(rate(...5xx...)) / clamp_min(sum(rate(...)), 1e-9)` |
-| **Service health (Blackbox /health probe)** | Step chart of **`probe_success`** (1 healthy, 0 failing) per `service` label extracted from the probe URL. | `probe_success{job="blackbox-health"}` |
-| **Bonus — uptime % (1h rolling)** | Approximate “uptime” as **`avg_over_time(probe_success[1h]) * 100`** for each microservice. Set the Grafana time picker to **Last 24 hours** to read the last day visually. | Three explicit queries for `order-service`, `tracking-service`, and `notification-service`. |
+| **Service health** | Step chart of **`probe_success`** (1 healthy, 0 failing) per `service` label extracted from the probe URL. | `probe_success{job="blackbox-health"}` |
+| **Uptime/availability %** | Approximate “uptime” as **`avg_over_time(probe_success[1h]) * 100`** for each microservice. | `avg_over_time(probe_success{job="blackbox-health", service=~"order-service\|tracking-service\|notification-service"}[24h]) * 100` |
 
-> **Screenshots:** capture your own Grafana views for submissions/portfolios; this README focuses on reproducible configuration.
-
+> **Screenshots of Grafana Dashboards**.
+  ![alt text](graf1.png)
+  ![alt text](graf2.png)
 ---
 
 ## 5. Alert testing (how to simulate each condition)
@@ -148,7 +144,7 @@ All rules live in **`prometheus/alerts.yml`** and are evaluated by Prometheus (v
 
 ### 5.1 `ServiceDown` (critical) — `/health` not HTTP 200 for >1 minute
 
-**Mechanism:** `probe_success{job="blackbox-health"} == 0` for **1m**.
+**Rule condition:** Triggers when `probe_success{job="blackbox-health"} == 0` for **1 minute**.
 
 **Simulate**
 
@@ -159,25 +155,31 @@ docker compose stop order-service
 
 Wait **>1 minute**, then check **Prometheus → Alerts**. Restore with `docker compose start order-service`.
 
-**Alternative:** keep the container running but make `/health` return non-200 **without editing service code** by inserting a reverse proxy or fault-injection sidecar (out of scope here)—stopping the container is the quickest classroom test.
-
 ### 5.2 `HighErrorRate` (warning) — >5% 5xx over 5 minutes
 
-**Mechanism:** ratio of `rate(http_requests_total{status=~"5.."}[5m])` over total request rate.
+**Rule condition:** Triggers when 5xx responses exceed **5% of total requests** over **5 minutes**.
 
 **Simulate**
 
-The sample services mostly emit **2xx/4xx**, not **5xx**, so this alert may not fire during casual browsing.
+1. Add a **temporary** `/chaos/500` route in `app/order-service/index.js` in a test branch to emit real `500 Internal Server Error`  responses.
+  ```javascript
+  // TEMPORARY CHAOS ROUTE FOR ALERT TESTING
+  app.get('/chaos/500', (req, res) => {
+    // This forces a 500 status code which the middleware above will record
+    res.status(500).json({ error: 'Simulated Internal Server Error!' });
+  });
+  ```
 
-**Practical options for reviewers:**
+2. Rebuild the `order-service` image so it copies your new, modified index.js file into the container: `docker compose up -d --build order-service`
 
-- Temporarily lower the threshold in a **local copy** of `alerts.yml` (for example `> 0.0001`) and `docker compose restart prometheus`, **or**
-- Add a **temporary** `/chaos/500` route in a throwaway branch (not this protected branch) to emit real 5xx, **or**
-- Use **`promtool test rules`** with crafted input series (advanced).
+3. Launch a bash traffic cannon to trigger the threshold: `while true; do curl -s http://localhost:3001/chaos/500 > /dev/null; echo -n "💥 "; sleep 0.1; done`
+
+Within 15–30 seconds, the "HTTP 5xx error rate (%)" panel will aggressively spike in Grafana. 
+Check **Prometheus → Alerts**. The alert will enter the PENDING state almost immediately. Leave the traffic cannon running for exactly 5 minutes to see the alert officially transition to FIRING.
 
 ### 5.3 `ServiceNotScraping` (warning) — no metrics scrape for >2 minutes
 
-**Mechanism:** `up{job=~"order-service|tracking-service|notification-service"} == 0` for **2m**.
+**Rule condition:** Triggers when Prometheus cannot scrape a service (up == 0) for 2 minutes. for **2 minutes**.
 
 **Simulate**
 
@@ -185,13 +187,13 @@ The sample services mostly emit **2xx/4xx**, not **5xx**, so this alert may not 
 docker compose stop tracking-service
 ```
 
-After **2 minutes**, Prometheus marks the `tracking-service` target as down (`up==0`) and the alert should move to **pending/firing** depending on timing.
+After **2 minutes**, Prometheus marks the `tracking-service` target as down (`up==0`) and the alert should move to **pending/firing**.
 
 ---
 
 ## 6. Logging (JSON file driver + commands)
 
-Compose configures the **`json-file`** driver with **rotation** (`max-size`, `max-file`) for every service via YAML anchors.
+All containers are configured to use Docker's `json-file` logging driver with a strict rotation policy (max-size: "10m", max-file: "5") to prevent disk exhaustion. The configuration was defined in the `x-logging` block of the docker-compose.yml file
 
 ### 6.1 View live logs (all services)
 
@@ -199,12 +201,11 @@ Compose configures the **`json-file`** driver with **rotation** (`max-size`, `ma
 docker compose logs -f
 ```
 
-**Sample output (abridged)**
+**Sample log output**
 
 ```text
-order-service-1  | {"level":"info","service":"order-service","msg":"Listening on port 3001"}
-prometheus-1     | ts=2026-04-23T12:00:00Z caller=main.go level=info msg="Starting Prometheus Server"
-grafana-1        | logger=settings t=2026-04-23T12:00:01Z level=info msg="Config loaded from"
+loki-1                  | level=info ts=2026-04-25T21:53:38.938052089Z caller=checkpoint.go:498 msg="atomic checkpoint finished" old=/loki/wal/checkpoint.000022.tmp new=/loki/wal/checkpoint.000022
+loki-1                  | level=info ts=2026-04-25T21:53:38.93854534Z caller=checkpoint.go:569 msg="checkpoint done" time=4m30.018754762s
 ```
 
 Each line is wrapped by Docker as JSON (fields such as `log`, `stream`, `time`)—easy to forward to Loki/ELK later.
@@ -218,43 +219,34 @@ docker compose logs order-service | grep -i error
 **Sample output**
 
 ```text
-order-service-1  | {"level":"error","msg":"example stack trace ..."}
+grafana-1               | logger=authn.service t=2026-04-25T19:55:01.688789777Z level=warn msg="Failed to authenticate request" client=auth.client.session error="user token not found"
 ```
 
-> **Note:** your sample apps primarily log **info** JSON to stdout; the `grep` command is still the standard operator workflow when errors exist.
+> **Note:** the apps primarily log **info** JSON to stdout; the `grep` command is still the standard operator workflow when errors exist.
+```text
+docker compose logs order-service | grep -i "info"
+order-service-1  | {"level":"info","service":"order-service","msg":"Listening on port 3001"}
+```
 
 ---
 
-## 7. Bonus — uptime % graph (Option C)
+## 7. Bonus — Loki Integration
 
-The dashboard’s final panel plots **`avg_over_time(probe_success[1h]) * 100`** per service. Widen the Grafana time range to **Last 24 hours** to reason about day-scale availability. This is an **approximation** of uptime derived from synthetic checks, not billing-grade SLO data.
-
----
-
-## 8. Key design decisions (short)
-
-| Decision | Why |
-| -------- | --- |
-| Dedicated **`observability`** bridge network | Stable DNS (`order-service`, `prometheus`, …) and least surprise compared to `default` bridge. |
-| **Blackbox** for `/health` | Satisfies “non-200 health” alerting while keeping Node services untouched. |
-| **Separate jobs per microservice** | `job` label aligns with Compose service names → simpler `sum by (job)` dashboards. |
-| **json-file logging + rotation** | Controls disk growth on laptops/CI runners while preserving structured envelopes for shippers. |
-| **Provisioned Grafana** | Eliminates manual datasource/dashboard clicks—matches “production GitOps” workflows. |
-| **Alert annotations** | Every alert carries **`summary`** and **`description`** for paging systems and humans. |
+To eliminate the need for terminal-based log parsing, this stack integrates `Promtail` and `Loki`. Promtail dynamically mounts the Docker socket, automatically tagging logs with the com.docker.compose.service metadata. This creates absolute label parity between Prometheus (metrics) and Loki (logs), enabling instant correlation inside Grafana.
 
 ---
 
-## 9. Pre-submission checklist (from the brief)
+## 8. Key design decisions
 
-- [ ] `docker compose up --build` succeeds from `dev-ops/WatchTower`
-- [ ] `.env.example` committed; real `.env` gitignored
-- [ ] Prometheus **/targets** shows microservices **UP**
-- [ ] Grafana loads **WatchTower Observability** automatically
-- [ ] `prometheus/alerts.yml` present with three alert names and annotations
-- [ ] README explains alert testing + logging commands
+## 8. Key Design Decisions
+
+| Decision | Architectural Reasoning |
+| :--- | :--- |
+| **Dedicated `observability` bridge network** | Ensures stable DNS resolution (`order-service`, `prometheus`, etc.) and provides isolation, avoiding the unpredictability of the `default` bridge. |
+| **Blackbox Exporter for `/health`** | Satisfies strict “non-200 health” alerting requirements using synthetic probes, keeping the core Node.js services completely untouched by monitoring logic. |
+| **Separate jobs per microservice** | Aligns the Prometheus `job` label perfectly with Docker Compose service names, enabling much simpler `sum by (job)` aggregation in Grafana. |
+| **`json-file` logging + rotation** | Controls disk growth on host machines and CI runners while preserving structured JSON envelopes for seamless downstream ingestion by Promtail/Loki. |
+| **Provisioned Grafana** | Eliminates manual UI configuration for datasources and dashboards, adhering strictly to modern "Infrastructure as Code" and GitOps workflows. |
+| **Rich Alert Annotations** | Every alert rule carries explicit `summary` and `description` fields, providing immediate context for on-call engineers and paging systems. |
 
 ---
-
-## 10. Original challenge & submission
-
-Upstream course text and submission links may still apply externally. This README is the **solution documentation** for the WatchTower observability work.
