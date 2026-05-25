@@ -15,7 +15,7 @@ An EC2 instance was provisioned using the AWS Console with the following configu
   * **Ingress Port 80 (HTTP):** Open to `0.0.0.0/0` for global http access.
   * **Ingress Port 22 (SSH):** Open to only my host ip
   
-![alt text](imgs\instance.png)
+![alt text](imgs/instance.png)
 
 ## 2. How to check if the container is running
 Upon initial boot, the following commands were executed to SSH into the host environment and prepare it for the container runtime:
@@ -30,7 +30,7 @@ sudo usermod -aG docker ec2-user
 ```
 The configuration to build and pull the docker image is defined inside the workflow(`.github/workflowa.deploy.yml`)
 
-![alt text](imgs\docker_cont.png)
+![alt text](imgs/docker_cont.png)
 
 ## 3. How to check if the container is running
 The command to check if the container is running is `docker container ls`
@@ -38,7 +38,7 @@ The command to check if the container is running is `docker container ls`
 ## 4. How to view the application logs
 To view the application logs run: `docker logs kora-app`
 
-![alt text](imgs\app_logs.png)
+![alt text](imgs/app_logs.png)
 
 Screenshot of the app ui
-![alt text](imgs\app_healthcheck.png)
+![alt text](imgs/app_healthcheck.png)
